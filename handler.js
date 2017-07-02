@@ -1,29 +1,31 @@
 'use strict';
 
-module.exports.hello = (event, context, callback) => {
-  service.getNextWasteCollection().then((result) => {
+module.exports.getWasteCollections = (event, context, callback) => {
+  service.getWasteCollections().then((result) => {
     const response = {
       statusCode: 200,
-      body: result
+      body: JSON.stringify(result)
     };
 
    callback(null, response);
  });
 };
 
+//Imports
 const fetch = require('fetch').fetchUrl;
 const cheerio = require('cheerio');
 const moment = require('moment');
 const aws = require('aws-sdk');
 
+//The website ID for the location to search
 const locationId = "10033340867";
-
+//The URL to get the data from
 const infoPage = 'http://maps.monmouthshire.gov.uk/localinfo.aspx?action=SetAddress&UniqueId=' + locationId;
 
+//An object encapsulating the functions for the api
 var service = {
-	getNextWasteCollection: function getNextWasteCollection() {
+	getWasteCollections: () => {
 		return new Promise(function (resolve, reject) {
-
 			service.getCachedData(locationId).then((data) => {
 				var currentTime = new Date().getTime();
 				var lastUpdated = data.lastUpdated;
@@ -34,34 +36,37 @@ var service = {
 				} else {
 					service.getPage(infoPage)
 						.then(service.getModel)
-						.then((result) => { service.updateCachedData(locationId, result) })
-						.then(function (result) {
+						.then(result => service.updateCachedData(locationId, result))
+						.then(result => console.log(result))
+						.then((result) => {
 							resolve(result);
 						});
 				}
-
 			});
 		});
 	},
 
 	getCachedData: (id) => {
 		return new Promise(function (resolve, reject) {
-			var docClient = new aws.DynamoDB.DocumentClient();
-
+			var docClient = new aws.DynamoDB();
+			
 			var params = {
 				TableName : "council-api",
-				KeyConditionExpression: "id = :idValue",
-				ExpressionAttributeValues: {
-					":idValue":id
+				Key: {
+					"id": { S: id}
 				}
 			};
 
-			docClient.query(params, function(err, data) {
+			docClient.getItem(params, function(err, result) {
     			if (err) {
 					reject(Error(err));
         			console.error("Unable to query. Error:", JSON.stringify(err, null, 2));
     			} else {
-        			resolve(JSON.parse(data.Items.pop().data));
+					if (result.Item === undefined) {
+						resolve({});
+					} else {
+        				resolve(JSON.parse(result.Item.data.S));
+					}
     			}
 			});
 		});
@@ -75,14 +80,13 @@ var service = {
 				TableName : "council-api",
 				Item : { "id": id, "data": JSON.stringify(data)}
 			};
-			console.log(params);
 
-			docClient.put(params, function(err, data) {
+			docClient.put(params, function(err, response) {
     			if (err) {
 					reject(Error(err));
         			console.error("Unable to put. Error:", JSON.stringify(err, null, 2));
     			} else {
-        			resolve();
+        			resolve(data);
     			}
 			});
 		});
