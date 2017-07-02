@@ -1,31 +1,90 @@
 'use strict';
 
 module.exports.hello = (event, context, callback) => {
-
   service.getNextWasteCollection().then((result) => {
     const response = {
       statusCode: 200,
-      body: JSON.stringify(result),
+      body: result
     };
 
-    callback(null, response);
-  });
+   callback(null, response);
+ });
 };
 
 const fetch = require('fetch').fetchUrl;
 const cheerio = require('cheerio');
 const moment = require('moment');
+const aws = require('aws-sdk');
 
-const infoPage = 'http://maps.monmouthshire.gov.uk/localinfo.aspx?action=SetAddress&UniqueId=10033340867';
+const locationId = "10033340867";
+
+const infoPage = 'http://maps.monmouthshire.gov.uk/localinfo.aspx?action=SetAddress&UniqueId=' + locationId;
 
 var service = {
-	getNextWasteCollection: function getTextResponse() {
+	getNextWasteCollection: function getNextWasteCollection() {
 		return new Promise(function (resolve, reject) {
-			service.getPage(infoPage)
-				.then(service.getModel)
-				.then(function (result) {
-					resolve(result);
-				})
+
+			service.getCachedData(locationId).then((data) => {
+				var currentTime = new Date().getTime();
+				var lastUpdated = data.lastUpdated;
+				var cachePeriodSeconds = 86400;
+
+				if ((lastUpdated + (cachePeriodSeconds * 1000)) > currentTime) {
+					resolve(data);
+				} else {
+					service.getPage(infoPage)
+						.then(service.getModel)
+						.then((result) => { service.updateCachedData(locationId, result) })
+						.then(function (result) {
+							resolve(result);
+						});
+				}
+
+			});
+		});
+	},
+
+	getCachedData: (id) => {
+		return new Promise(function (resolve, reject) {
+			var docClient = new aws.DynamoDB.DocumentClient();
+
+			var params = {
+				TableName : "council-api",
+				KeyConditionExpression: "id = :idValue",
+				ExpressionAttributeValues: {
+					":idValue":id
+				}
+			};
+
+			docClient.query(params, function(err, data) {
+    			if (err) {
+					reject(Error(err));
+        			console.error("Unable to query. Error:", JSON.stringify(err, null, 2));
+    			} else {
+        			resolve(JSON.parse(data.Items.pop().data));
+    			}
+			});
+		});
+	},
+
+	updateCachedData: function updateCachedData(id, data) {
+		return new Promise(function (resolve, reject) {
+			var docClient = new aws.DynamoDB.DocumentClient();
+
+			var params = {
+				TableName : "council-api",
+				Item : { "id": id, "data": JSON.stringify(data)}
+			};
+			console.log(params);
+
+			docClient.put(params, function(err, data) {
+    			if (err) {
+					reject(Error(err));
+        			console.error("Unable to put. Error:", JSON.stringify(err, null, 2));
+    			} else {
+        			resolve();
+    			}
+			});
 		});
 	},
 
@@ -50,6 +109,7 @@ var service = {
 			const $ = cheerio.load(html);
 
 			var model = {
+				lastUpdated: new Date().getTime(),
 				collections: []
 			}
 

@@ -9,6 +9,7 @@
   "author": "Adam Farmer",
   "license": "ISC",
   "dependencies": {
+    "aws-sdk": "^2.78.0",
     "cheerio": "^1.0.0-rc.1",
     "fetch": "^1.1.0",
     "moment": "^2.18.1"
