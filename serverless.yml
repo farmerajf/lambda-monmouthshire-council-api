@@ -11,7 +11,7 @@
 #
 # Happy Coding!
 
-service: council-api # NOTE: update this with your service name
+service: monmouthshire-council-api # NOTE: update this with your service name
 
 # You can pin your service to only deploy with a specific Serverless version
 # Check out our docs for more details
@@ -24,7 +24,7 @@ provider:
 
 # you can overwrite defaults here
 #  stage: dev
-#  region: us-east-1
+  region: eu-west-1
 
 # you can add statements to the Lambda function's IAM Role here
 #  iamRoleStatements:
@@ -111,7 +111,7 @@ resources:
     DynamoDbTable:
       Type: AWS::DynamoDB::Table
       Properties:
-        TableName: council-api
+        TableName: monmouthshire-council-api
         AttributeDefinitions:
           - AttributeName: id
             AttributeType: S

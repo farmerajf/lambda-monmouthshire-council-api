@@ -21,6 +21,9 @@ const aws = require('aws-sdk');
 const locationId = "10033340867";
 //The URL to get the data from
 const infoPage = 'http://maps.monmouthshire.gov.uk/localinfo.aspx?action=SetAddress&UniqueId=' + locationId;
+//Turns the cache on or off, usefull for testing locally
+const cacheEnabled = true;
+
 
 //An object encapsulating the functions for the api
 var service = {
@@ -37,7 +40,10 @@ var service = {
 					service.getPage(infoPage)
 						.then(service.getModel)
 						.then(result => service.updateCachedData(locationId, result))
-						.then(result => console.log(result))
+						.then(result => { 
+							console.log(result);
+							resolve(result);
+						})
 						.then((result) => {
 							resolve(result);
 						});
@@ -48,47 +54,60 @@ var service = {
 
 	getCachedData: (id) => {
 		return new Promise(function (resolve, reject) {
-			var docClient = new aws.DynamoDB();
-			
-			var params = {
-				TableName : "council-api",
-				Key: {
-					"id": { S: id}
-				}
-			};
-
-			docClient.getItem(params, function(err, result) {
-    			if (err) {
-					reject(Error(err));
-        			console.error("Unable to query. Error:", JSON.stringify(err, null, 2));
-    			} else {
-					if (result.Item === undefined) {
-						resolve({});
-					} else {
-        				resolve(JSON.parse(result.Item.data.S));
+			if (!cacheEnabled) {
+				console.log("Cache is disabled");
+				resolve({});
+			} else {
+				console.log("Getting cached data");
+				var docClient = new aws.DynamoDB();
+				
+				var params = {
+					TableName : "monmouthshire-council-api",
+					Key: {
+						"id": { S: id}
 					}
-    			}
-			});
+				};
+
+				docClient.getItem(params, function(err, result) {
+					if (err) {
+						reject(Error(err));
+						console.error("Unable to query. Error:", JSON.stringify(err, null, 2));
+					} else {
+						if (result.Item === undefined) {
+							console.log("Cached data is empty");
+							resolve({});
+						} else {
+							console.log("Cached data is: " + result.Item.data.S);
+							resolve(JSON.parse(result.Item.data.S));
+						}
+					}
+				});
+			}
 		});
 	},
 
 	updateCachedData: function updateCachedData(id, data) {
 		return new Promise(function (resolve, reject) {
-			var docClient = new aws.DynamoDB.DocumentClient();
+			if (!cacheEnabled) {
+				console.log("Cache disabled. Will not cache result");
+				resolve(data);
+			} else {
+				var docClient = new aws.DynamoDB.DocumentClient();
 
-			var params = {
-				TableName : "council-api",
-				Item : { "id": id, "data": JSON.stringify(data)}
-			};
+				var params = {
+					TableName : "monmouthshire-council-api",
+					Item : { "id": id, "data": JSON.stringify(data)}
+				};
 
-			docClient.put(params, function(err, response) {
-    			if (err) {
-					reject(Error(err));
-        			console.error("Unable to put. Error:", JSON.stringify(err, null, 2));
-    			} else {
-        			resolve(data);
-    			}
-			});
+				docClient.put(params, function(err, response) {
+					if (err) {
+						reject(Error(err));
+						console.error("Unable to put. Error:", JSON.stringify(err, null, 2));
+					} else {
+						resolve(data);
+					}
+				});
+			}
 		});
 	},
 
@@ -110,6 +129,7 @@ var service = {
 
 	getModel: function getModel(html) {
 		return new Promise((resolve, reject) => {
+			console.log("Creating model");
 			const $ = cheerio.load(html);
 
 			var model = {
